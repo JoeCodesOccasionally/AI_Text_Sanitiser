@@ -62,17 +62,15 @@
   let normalizingStats = false;
   const settings = {
     removeEmojis: true,
-    removeExtraSpaces: false,
     siteAllowlist: DEFAULT_SITES.slice()
   };
   let activeForPage = false;
 
   chrome.storage.local.get(
-    ['stats', 'removeEmojis', 'removeExtraSpaces', 'siteAllowlist'],
+    ['stats', 'removeEmojis', 'siteAllowlist'],
     res => {
       stats = res.stats || {};
       settings.removeEmojis = res.removeEmojis !== false;
-      settings.removeExtraSpaces = !!res.removeExtraSpaces;
       const hasStoredSites = Array.isArray(res.siteAllowlist);
       settings.siteAllowlist = normalizeSiteList(
         hasStoredSites ? res.siteAllowlist : DEFAULT_SITES,
@@ -268,30 +266,6 @@
     }
   }
 
-  function collapseSpaces(input) {
-    if (!settings.removeExtraSpaces) {
-      return { text: input, removed: 0 };
-    }
-    let removed = 0;
-    let output = '';
-    let inSpaceRun = false;
-    for (let i = 0; i < input.length; i += 1) {
-      const ch = input[i];
-      if (ch === ' ') {
-        if (!inSpaceRun) {
-          output += ' ';
-          inSpaceRun = true;
-        } else {
-          removed += 1;
-        }
-      } else {
-        inSpaceRun = false;
-        output += ch;
-      }
-    }
-    return { text: output, removed };
-  }
-
   function updateStats(removals) {
     if (!removals.size) return 0;
     let total = 0;
@@ -345,12 +319,7 @@
       }
     }
 
-    let cleaned = kept.join('');
-    const spaceResult = collapseSpaces(cleaned);
-    cleaned = spaceResult.text;
-    if (spaceResult.removed > 0) {
-      recordRemoval(removals, 0x20, ' ', spaceResult.removed);
-    }
+    const cleaned = kept.join('');
 
     if (!removals.size && cleaned === sel) return;
 
@@ -370,9 +339,6 @@
     }
     if ('removeEmojis' in changes) {
       settings.removeEmojis = !!changes.removeEmojis.newValue;
-    }
-    if ('removeExtraSpaces' in changes) {
-      settings.removeExtraSpaces = !!changes.removeExtraSpaces.newValue;
     }
     if ('siteAllowlist' in changes) {
       settings.siteAllowlist = normalizeSiteList(

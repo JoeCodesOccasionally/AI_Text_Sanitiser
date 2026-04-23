@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AI_Text_Sanitiser",
   "version": "1.4",
-  "description": "AI_Text_Sanitiser cleans copied text by stripping configurable non-ASCII, emoji, and spacing artifacts, with per-site control and removal stats.",
+  "description": "AI_Text_Sanitiser cleans copied text by stripping configurable non-ASCII and emoji artifacts, with per-site control and removal stats.",
   "permissions": [
     "clipboardWrite",
     "storage"

@@ -131,7 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const tableBody = document.querySelector('#statsTable tbody');
   const resetBtn = document.getElementById('resetBtn');
   const removeEmojiToggle = document.getElementById('removeEmojiToggle');
-  const removeSpacesToggle = document.getElementById('removeSpacesToggle');
   const siteForm = document.getElementById('siteForm');
   const siteInput = document.getElementById('siteInput');
   const siteList = document.getElementById('siteList');
@@ -139,7 +138,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const state = {
     stats: {},
     removeEmojis: true,
-    removeExtraSpaces: false,
     siteAllowlist: DEFAULT_SITES.slice()
   };
 
@@ -212,17 +210,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function syncUI() {
     removeEmojiToggle.checked = state.removeEmojis;
-    removeSpacesToggle.checked = state.removeExtraSpaces;
     renderStats();
     renderSites();
   }
 
   chrome.storage.local.get(
-    ['stats', 'removeEmojis', 'removeExtraSpaces', 'siteAllowlist'],
+    ['stats', 'removeEmojis', 'siteAllowlist'],
     res => {
       state.stats = res.stats || {};
       state.removeEmojis = res.removeEmojis !== false;
-      state.removeExtraSpaces = !!res.removeExtraSpaces;
       state.siteAllowlist = Array.isArray(res.siteAllowlist)
         ? uniqueDomains(res.siteAllowlist.map(normalizeDomain).filter(Boolean))
         : DEFAULT_SITES.slice();
@@ -237,9 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if ('removeEmojis' in changes) {
       state.removeEmojis = !!changes.removeEmojis.newValue;
-    }
-    if ('removeExtraSpaces' in changes) {
-      state.removeExtraSpaces = !!changes.removeExtraSpaces.newValue;
     }
     if ('siteAllowlist' in changes) {
       if (Array.isArray(changes.siteAllowlist.newValue)) {
@@ -264,12 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
     state.removeEmojis = remove;
     chrome.storage.local.set({ removeEmojis: remove });
     renderStats();
-  });
-
-  removeSpacesToggle.addEventListener('change', () => {
-    const collapse = removeSpacesToggle.checked;
-    state.removeExtraSpaces = collapse;
-    chrome.storage.local.set({ removeExtraSpaces: collapse });
   });
 
   siteForm.addEventListener('submit', e => {
