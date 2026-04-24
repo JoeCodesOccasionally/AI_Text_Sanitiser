@@ -19,6 +19,8 @@ When you copy text on a monitored site, the extension automatically removes:
 - Non-Latin characters and symbols  
 - Diacritics, variation selectors, and combining marks  
 - (Optional) Emoji  
+- (Optional) AI Citation markers (e.g., `[1]`, `[cite: 123]`) from Gemini, ChatGPT, and others.
+- **Programmatic Copy Support:** Intercepts "Copy" buttons on sites like Gemini code blocks and ChatGPT.
 
 > ⚙️ Configuration and per-site exception lists are planned features.
 

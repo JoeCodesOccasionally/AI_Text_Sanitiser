@@ -1,7 +1,7 @@
 /* eslint-disable prefer-rest-params */
 /**
  * Content script for AI Text Sanitiser.
- * Handles the 'copy' event and cleans text according to user settings.
+ * Handles the 'copy' event and coordinates with the main world injector.
  */
 (function () {
   /**
@@ -17,6 +17,20 @@
   let activeForPage = false;
 
   const domainPatternCache = new Map();
+
+  /**
+   * Updates the injector in the main world with current settings.
+   */
+  function updateInjector() {
+    window.postMessage({
+      type: 'AI_TEXT_SANITISER_SETTINGS',
+      settings: {
+        removeEmojis: settings.removeEmojis,
+        removeCitations: settings.removeCitations,
+        activeForPage: activeForPage
+      }
+    }, '*');
+  }
 
   /**
    * Initializes settings from chrome.storage.local using Promises.
@@ -44,6 +58,7 @@
 
         normalizeStatsMetadata();
         updateActivation();
+        updateInjector();
       })
       .catch(err => console.error('AI Text Sanitiser: Failed to load settings', err));
   }
@@ -189,13 +204,16 @@
 
   /**
    * Updates the persistent stats in storage.
-   * @param {Map} removals - The map of removed characters.
+   * @param {Map|Object} removals - The map or object of removed characters.
    * @returns {number} The total number of characters removed.
    */
   function updateStats(removals) {
-    if (!removals.size) return 0;
+    const entries = removals instanceof Map ? removals.entries() : Object.entries(removals);
     let total = 0;
-    for (const [key, data] of removals.entries()) {
+    let hasRemovals = false;
+
+    for (const [key, data] of entries) {
+      hasRemovals = true;
       const entry = stats[key] || { count: 0, char: data.name, category: data.category, emoji: data.emoji };
       entry.count += data.count;
       entry.char = data.name;
@@ -204,7 +222,10 @@
       stats[key] = entry;
       total += data.count;
     }
-    chrome.storage.local.set({ stats });
+
+    if (hasRemovals) {
+      chrome.storage.local.set({ stats });
+    }
     return total;
   }
 
@@ -234,6 +255,9 @@
   // Event Listeners
   document.addEventListener('copy', e => {
     if (!activeForPage) return;
+    
+    // Check if the event is being handled by the main world (programmatic copy)
+    // We only handle standard browser-level copies here.
     const originalSel = getSelectedText();
     if (!originalSel) return;
 
@@ -270,17 +294,34 @@
     setTimeout(() => showBadge(message), 0);
   }, true);
 
+  // Listen for messages from the main world
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+
+    if (event.data && event.data.type === 'AI_TEXT_SANITISER_REMOVALS') {
+      const removedCount = updateStats(event.data.removals);
+      const message = removedCount > 0 ? `Cleaned ✂️ ${removedCount}` : 'Already Clean!';
+      showBadge(message);
+    } else if (event.data && event.data.type === 'AI_TEXT_SANITISER_PING') {
+      updateInjector();
+    }
+  });
+
   chrome.storage.onChanged?.addListener((changes, area) => {
     if (area !== 'local') return;
+    let settingsChanged = false;
+
     if ('stats' in changes) {
       stats = changes.stats.newValue || {};
       normalizeStatsMetadata();
     }
     if ('removeEmojis' in changes) {
       settings.removeEmojis = !!changes.removeEmojis.newValue;
+      settingsChanged = true;
     }
     if ('removeCitations' in changes) {
       settings.removeCitations = !!changes.removeCitations.newValue;
+      settingsChanged = true;
     }
     if ('siteAllowlist' in changes) {
       const newList = Array.isArray(changes.siteAllowlist.newValue) ? changes.siteAllowlist.newValue : [];
@@ -290,6 +331,11 @@
       settings.siteAllowlist = Array.from(new Set(cleaned));
       domainPatternCache.clear();
       updateActivation();
+      settingsChanged = true;
+    }
+
+    if (settingsChanged) {
+      updateInjector();
     }
   });
 
