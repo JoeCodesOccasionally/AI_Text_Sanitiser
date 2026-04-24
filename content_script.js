@@ -1,131 +1,84 @@
 /* eslint-disable prefer-rest-params */
+/**
+ * Content script for AI Text Sanitiser.
+ * Handles the 'copy' event and cleans text according to user settings.
+ */
 (function () {
-  const DEFAULT_SITES = ['*.chatgpt.com', '*.deepseek.com', '*.claude.ai'];
-  const emojiRegex = /\p{Extended_Pictographic}/u;
-
-  const unicodeDatabase = {
-    'U+0020': { name: 'SPACE', category: 'Whitespace' },
-    'U+00A0': { name: 'NO-BREAK SPACE', category: 'Whitespace' },
-    'U+00B0': { name: 'DEGREE SIGN', category: 'Symbol' },
-    'U+00B2': { name: 'SUPERSCRIPT TWO', category: 'Superscript/Subscript' },
-    'U+0394': { name: 'GREEK CAPITAL LETTER DELTA', category: 'Greek Letter' },
-    'U+200B': { name: 'ZERO WIDTH SPACE', category: 'Whitespace' },
-    'U+200C': { name: 'ZERO WIDTH NON-JOINER', category: 'Whitespace' },
-    'U+200D': { name: 'ZERO WIDTH JOINER', category: 'Whitespace' },
-    'U+200E': { name: 'LEFT-TO-RIGHT MARK', category: 'Directional Formatting' },
-    'U+200F': { name: 'RIGHT-TO-LEFT MARK', category: 'Directional Formatting' },
-    'U+2022': { name: 'BULLET', category: 'Punctuation' },
-    'U+2026': { name: 'HORIZONTAL ELLIPSIS', category: 'Punctuation' },
-    'U+202A': { name: 'LEFT-TO-RIGHT EMBEDDING', category: 'Directional Formatting' },
-    'U+202B': { name: 'RIGHT-TO-LEFT EMBEDDING', category: 'Directional Formatting' },
-    'U+202C': { name: 'POP DIRECTIONAL FORMATTING', category: 'Directional Formatting' },
-    'U+202D': { name: 'LEFT-TO-RIGHT OVERRIDE', category: 'Directional Formatting' },
-    'U+202E': { name: 'RIGHT-TO-LEFT OVERRIDE', category: 'Directional Formatting' },
-    'U+2060': { name: 'WORD JOINER', category: 'Whitespace' },
-    'U+2066': { name: 'LEFT-TO-RIGHT ISOLATE', category: 'Directional Formatting' },
-    'U+2067': { name: 'RIGHT-TO-LEFT ISOLATE', category: 'Directional Formatting' },
-    'U+2068': { name: 'FIRST STRONG ISOLATE', category: 'Directional Formatting' },
-    'U+2069': { name: 'POP DIRECTIONAL ISOLATE', category: 'Directional Formatting' },
-    'U+2122': { name: 'TRADE MARK SIGN', category: 'Symbol' },
-    'U+2192': { name: 'RIGHTWARDS ARROW', category: 'Arrow' },
-    'U+2212': { name: 'MINUS SIGN', category: 'Math Symbol' },
-    'U+2218': { name: 'RING OPERATOR', category: 'Math Symbol' },
-    'U+2248': { name: 'ALMOST EQUAL TO', category: 'Math Symbol' },
-    'U+2264': { name: 'LESS-THAN OR EQUAL TO', category: 'Math Symbol' },
-    'U+207A': { name: 'SUPERSCRIPT PLUS SIGN', category: 'Superscript/Subscript' },
-    'U+2082': { name: 'SUBSCRIPT TWO', category: 'Superscript/Subscript' },
-    'U+2013': { name: 'EN DASH', category: 'Punctuation' },
-    'U+2014': { name: 'EM DASH', category: 'Punctuation' },
-    'U+2018': { name: 'LEFT SINGLE QUOTATION MARK', category: 'Punctuation' },
-    'U+2019': { name: 'RIGHT SINGLE QUOTATION MARK', category: 'Punctuation' },
-    'U+201C': { name: 'LEFT DOUBLE QUOTATION MARK', category: 'Punctuation' },
-    'U+201D': { name: 'RIGHT DOUBLE QUOTATION MARK', category: 'Punctuation' },
-    'U+FEFF': { name: 'ZERO WIDTH NO-BREAK SPACE', category: 'Whitespace' },
-    'U+D835': { name: 'HIGH SURROGATE D835 (mathematical alphanumerics lead)', category: 'Surrogate', isEmoji: false },
-    'U+D800': { name: 'HIGH SURROGATE (generic)', category: 'Surrogate', isEmoji: true },
-    'U+D83C': { name: 'HIGH SURROGATE D83C (emoji lead)', category: 'Surrogate', isEmoji: true },
-    'U+D83D': { name: 'HIGH SURROGATE D83D (emoji lead)', category: 'Surrogate', isEmoji: true },
-    'U+D83E': { name: 'HIGH SURROGATE D83E (emoji lead)', category: 'Surrogate', isEmoji: true },
-    'U+DC47': { name: 'LOW SURROGATE DC47 (part of BACKHAND INDEX POINTING DOWN)', category: 'Surrogate', isEmoji: true },
-    'U+DC48': { name: 'LOW SURROGATE DC48 (part of BACKHAND INDEX POINTING LEFT)', category: 'Surrogate', isEmoji: true },
-    'U+DC51': { name: 'LOW SURROGATE DC51 (part of CROWN)', category: 'Surrogate', isEmoji: true },
-    'U+DC5D': { name: 'LOW SURROGATE DC5D (part of POUCH)', category: 'Surrogate', isEmoji: true },
-    'U+DC56': { name: 'LOW SURROGATE DC56 (part of JEANS)', category: 'Surrogate', isEmoji: true },
-    'U+1F447': { name: 'BACKHAND INDEX POINTING DOWN', category: 'Emoji', isEmoji: true },
-    'U+1F448': { name: 'BACKHAND INDEX POINTING LEFT', category: 'Emoji', isEmoji: true },
-    'U+1F451': { name: 'CROWN', category: 'Emoji', isEmoji: true },
-    'U+1F45D': { name: 'POUCH', category: 'Emoji', isEmoji: true },
-    'U+1F456': { name: 'JEANS', category: 'Emoji', isEmoji: true }
-  };
-
+  /**
+   * Internal state for the content script.
+   */
   let stats = {};
   let normalizingStats = false;
   const settings = {
     removeEmojis: true,
+    removeCitations: true,
     siteAllowlist: DEFAULT_SITES.slice()
   };
   let activeForPage = false;
 
-  chrome.storage.local.get(
-    ['stats', 'removeEmojis', 'siteAllowlist'],
-    res => {
-      stats = res.stats || {};
-      settings.removeEmojis = res.removeEmojis !== false;
-      const hasStoredSites = Array.isArray(res.siteAllowlist);
-      settings.siteAllowlist = normalizeSiteList(
-        hasStoredSites ? res.siteAllowlist : DEFAULT_SITES,
-        { sourceWasArray: hasStoredSites }
-      );
-      if (!hasStoredSites) {
-        chrome.storage.local.set({ siteAllowlist: settings.siteAllowlist });
-      }
-      normalizeStatsMetadata();
-      updateActivation();
-    }
-  );
-
-  function normalizeSiteList(list, opts = {}) {
-    const wasArray = typeof opts.sourceWasArray === 'boolean' ? opts.sourceWasArray : Array.isArray(list);
-    if (!Array.isArray(list)) list = [];
-    const cleaned = list
-      .map(item => typeof item === 'string' ? sanitizeDomain(item) : '')
-      .filter(Boolean);
-    if (!cleaned.length) {
-      return wasArray ? [] : DEFAULT_SITES.slice();
-    }
-    return Array.from(new Set(cleaned));
-  }
-
-  function sanitizeDomain(input) {
-    let value = String(input || '').trim().toLowerCase();
-    if (!value) return '';
-    value = value.replace(/\s+/g, '');
-    value = value.replace(/^[a-z]+:\/\//, '');
-    value = value.replace(/\/.*/, '');
-    while (value.endsWith('.')) value = value.slice(0, -1);
-    if (value.startsWith('www.')) value = value.slice(4);
-    return value;
-  }
-
   const domainPatternCache = new Map();
 
+  /**
+   * Initializes settings from chrome.storage.local using Promises.
+   */
+  function initialize() {
+    chrome.storage.local.get(['stats', 'removeEmojis', 'removeCitations', 'siteAllowlist'])
+      .then(res => {
+        stats = res.stats || {};
+        settings.removeEmojis = res.removeEmojis !== false;
+        settings.removeCitations = res.removeCitations !== false;
+
+        const hasStoredSites = Array.isArray(res.siteAllowlist);
+        const rawList = hasStoredSites ? res.siteAllowlist : DEFAULT_SITES;
+
+        // Normalize the site list
+        const cleaned = rawList
+          .map(item => typeof item === 'string' ? normalizeDomain(item) : '')
+          .filter(Boolean);
+
+        settings.siteAllowlist = cleaned.length > 0 ? Array.from(new Set(cleaned)) : (hasStoredSites ? [] : DEFAULT_SITES.slice());
+
+        if (!hasStoredSites) {
+          chrome.storage.local.set({ siteAllowlist: settings.siteAllowlist });
+        }
+
+        normalizeStatsMetadata();
+        updateActivation();
+      })
+      .catch(err => console.error('AI Text Sanitiser: Failed to load settings', err));
+  }
+
+  /**
+   * Escapes a string for use in a regular expression.
+   * @param {string} str - The string to escape.
+   * @returns {string} The escaped string.
+   */
   function escapeRegExp(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
+  /**
+   * Matches a hostname against a wildcard pattern.
+   * @param {string} hostname - The hostname to check.
+   * @param {string} pattern - The pattern (e.g., '*.example.com').
+   * @returns {boolean} True if the hostname matches the pattern.
+   */
   function matchesSitePattern(hostname, pattern) {
     const host = String(hostname || '').toLowerCase().replace(/\s+/g, '').replace(/\.+$/, '');
     let normalized = String(pattern || '').toLowerCase().replace(/\s+/g, '').replace(/\.+$/, '');
     if (!host || !normalized) return false;
     if (normalized === '*') return true;
+
     if (normalized.startsWith('*.') && normalized.indexOf('*', 1) === -1) {
       const suffix = normalized.slice(2);
       if (!suffix) return true;
       return host === suffix || host.endsWith(`.${suffix}`);
     }
+
     if (!normalized.includes('*')) {
       return host === normalized || host.endsWith(`.${normalized}`);
     }
+
     let regex = domainPatternCache.get(normalized);
     if (!regex) {
       const escaped = normalized.split('*').map(escapeRegExp).join('.*');
@@ -135,68 +88,17 @@
     return regex.test(host);
   }
 
-  updateActivation();
-
+  /**
+   * Updates whether the extension is active for the current page.
+   */
   function updateActivation() {
     const hostname = location.hostname.toLowerCase();
     activeForPage = settings.siteAllowlist.some(pattern => matchesSitePattern(hostname, pattern));
   }
 
-  function formatCodePoint(cp) {
-    return `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`;
-  }
-
-  function isEmojiCodePoint(cp, char) {
-    if (!Number.isFinite(cp)) return false;
-    if (char && emojiRegex.test(char)) return true;
-    if (cp >= 0x1F300 && cp <= 0x1FAFF) return true;
-    if (cp >= 0x1F000 && cp <= 0x1F02F) return true;
-    if (cp >= 0x1F600 && cp <= 0x1F64F) return true;
-    if (cp >= 0x1F680 && cp <= 0x1F6FF) return true;
-    if (cp >= 0x1F900 && cp <= 0x1F9FF) return true;
-    return false;
-  }
-
-  function classifyCodePoint(cp) {
-    if (!Number.isFinite(cp)) return 'Unknown';
-    if (cp <= 0x1F) return 'Control';
-    if (cp === 0x20) return 'Whitespace';
-    if (cp <= 0x7F) return 'ASCII';
-    if (cp >= 0x0300 && cp <= 0x036F) return 'Combining Mark';
-    if (cp >= 0x0370 && cp <= 0x03FF) return 'Greek Letter';
-    if (cp >= 0x0400 && cp <= 0x04FF) return 'Cyrillic';
-    if (cp >= 0x2000 && cp <= 0x206F) return 'Punctuation';
-    if (cp >= 0x2070 && cp <= 0x209F) return 'Superscript/Subscript';
-    if (cp >= 0x2100 && cp <= 0x214F) return 'Letterlike Symbol';
-    if (cp >= 0x2190 && cp <= 0x21FF) return 'Arrow';
-    if (cp >= 0x2200 && cp <= 0x22FF) return 'Math Symbol';
-    if (cp >= 0x2300 && cp <= 0x23FF) return 'Technical Symbol';
-    if (cp >= 0x2460 && cp <= 0x24FF) return 'Number Form';
-    if (cp >= 0x25A0 && cp <= 0x25FF) return 'Geometric Symbol';
-    if (cp >= 0x2600 && cp <= 0x26FF) return 'Dingbat';
-    if (cp >= 0x2700 && cp <= 0x27BF) return 'Dingbat';
-    if (cp >= 0x3000 && cp <= 0x303F) return 'CJK Punctuation';
-    if (cp >= 0x3040 && cp <= 0x30FF) return 'Kana';
-    if (cp >= 0x4E00 && cp <= 0x9FFF) return 'CJK Ideograph';
-    if (cp >= 0xD800 && cp <= 0xDBFF) return 'High Surrogate';
-    if (cp >= 0xDC00 && cp <= 0xDFFF) return 'Low Surrogate';
-    if (cp >= 0x1F000) return 'Emoji';
-    return 'Non-ASCII';
-  }
-
-  function getCodePointMeta(codePoint, char) {
-    const key = typeof codePoint === 'number' ? formatCodePoint(codePoint) : codePoint;
-    const cpNumber = typeof codePoint === 'number' ? codePoint : parseInt(key.slice(2), 16);
-    const info = unicodeDatabase[key];
-    const isEmoji = typeof info?.isEmoji === 'boolean' ? info.isEmoji : isEmojiCodePoint(cpNumber, char);
-    return {
-      key,
-      name: info?.name || 'UNKNOWN CHARACTER',
-      category: info?.category || classifyCodePoint(cpNumber),
-      emoji: isEmoji
-    };
-  }
-
+  /**
+   * Normalizes character metadata in the stats to ensure consistency.
+   */
   function normalizeStatsMetadata() {
     let mutated = false;
     for (const [key, entry] of Object.entries(stats)) {
@@ -217,10 +119,14 @@
     }
     if (mutated && !normalizingStats) {
       normalizingStats = true;
-      chrome.storage.local.set({ stats }, () => { normalizingStats = false; });
+      chrome.storage.local.set({ stats }).then(() => { normalizingStats = false; });
     }
   }
 
+  /**
+   * Displays a brief visual indicator when text is cleaned.
+   * @param {string} message - The message to display.
+   */
   function showBadge(message) {
     try {
       const badge = document.createElement('div');
@@ -246,9 +152,17 @@
         badge.style.opacity = '0';
         badge.addEventListener('transitionend', () => badge.remove(), { once: true });
       }, 800);
-    } catch { }
+    } catch (err) {
+      console.warn('AI Text Sanitiser: Failed to show badge', err);
+    }
   }
 
+  /**
+   * Determines if a specific character should be removed based on settings.
+   * @param {number} cp - The code point.
+   * @param {string} char - The character.
+   * @returns {boolean} True if the character should be removed.
+   */
   function shouldRemove(cp, char) {
     if (cp <= 0x7F) return false;
     const isEmoji = isEmojiCodePoint(cp, char);
@@ -256,6 +170,13 @@
     return true;
   }
 
+  /**
+   * Records a character removal in the provided map.
+   * @param {Map} map - The map to store removal counts.
+   * @param {number} cp - The code point.
+   * @param {string} char - The character.
+   * @param {number} amount - The number of characters removed.
+   */
   function recordRemoval(map, cp, char, amount) {
     const meta = getCodePointMeta(cp, char);
     const existing = map.get(meta.key);
@@ -266,6 +187,11 @@
     }
   }
 
+  /**
+   * Updates the persistent stats in storage.
+   * @param {Map} removals - The map of removed characters.
+   * @returns {number} The total number of characters removed.
+   */
   function updateStats(removals) {
     if (!removals.size) return 0;
     let total = 0;
@@ -282,12 +208,19 @@
     return total;
   }
 
+  /**
+   * Gets the currently selected text from the page.
+   * Handles regular selection and input/textarea fields.
+   * @returns {string} The selected text.
+   */
   function getSelectedText() {
     const selection = window.getSelection?.();
     const text = selection?.toString() || '';
     if (text) return text;
+
     const active = document.activeElement;
     if (!active) return '';
+
     if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
       const value = active.value || '';
       if (typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number') {
@@ -298,10 +231,16 @@
     return '';
   }
 
+  // Event Listeners
   document.addEventListener('copy', e => {
     if (!activeForPage) return;
-    const sel = getSelectedText();
-    if (!sel) return;
+    const originalSel = getSelectedText();
+    if (!originalSel) return;
+
+    let sel = originalSel;
+    if (settings.removeCitations) {
+      sel = sel.replace(citationRegex, '');
+    }
 
     const removals = new Map();
     const kept = [];
@@ -321,13 +260,13 @@
 
     const cleaned = kept.join('');
 
-    if (!removals.size && cleaned === sel) return;
+    if (!removals.size && cleaned === originalSel) return;
 
     e.clipboardData.setData('text/plain', cleaned);
     e.preventDefault();
 
     const removedCount = updateStats(removals);
-    const message = removedCount > 0 ? `Cleaned ✂️ ${removedCount}` : 'Already Clean!';
+    const message = (removedCount > 0 || (settings.removeCitations && cleaned !== originalSel)) ? `Cleaned ✂️ ${removedCount}` : 'Already Clean!';
     setTimeout(() => showBadge(message), 0);
   }, true);
 
@@ -340,14 +279,21 @@
     if ('removeEmojis' in changes) {
       settings.removeEmojis = !!changes.removeEmojis.newValue;
     }
+    if ('removeCitations' in changes) {
+      settings.removeCitations = !!changes.removeCitations.newValue;
+    }
     if ('siteAllowlist' in changes) {
-      settings.siteAllowlist = normalizeSiteList(
-        changes.siteAllowlist.newValue,
-        { sourceWasArray: Array.isArray(changes.siteAllowlist.newValue) }
-      );
+      const newList = Array.isArray(changes.siteAllowlist.newValue) ? changes.siteAllowlist.newValue : [];
+      const cleaned = newList
+        .map(item => typeof item === 'string' ? normalizeDomain(item) : '')
+        .filter(Boolean);
+      settings.siteAllowlist = Array.from(new Set(cleaned));
       domainPatternCache.clear();
       updateActivation();
     }
   });
+
+  // Run initialization
+  initialize();
 
 })();

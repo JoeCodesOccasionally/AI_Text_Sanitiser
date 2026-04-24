@@ -34,7 +34,11 @@
     <input id="removeEmojiToggle" type="checkbox">
     <span>Remove emoji characters</span>
   </label>
-  <div class="muted small">When off, emojis stay in your copies and are hidden from the stats table.</div>
+  <label class="switch">
+    <input id="removeCitationToggle" type="checkbox">
+    <span>Remove citation markers</span>
+  </label>
+  <div class="muted small">When off, emojis and citations stay in your copies.</div>
 
   <div class="section-title">Sites</div>
   <div class="muted small">Use * as a wildcard (e.g. *.chatgpt.com). Leave empty to disable cleaning.</div>
@@ -62,6 +66,7 @@
   </table>
   <button id="resetBtn">Reset Stats</button>
 
+  <script src="utils.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

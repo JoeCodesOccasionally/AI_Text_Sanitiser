@@ -90,12 +90,12 @@ Manual installs don’t auto-update. To upgrade:
 ---
 
 ## 💡 Coming Soon
-- Configurable removal categories (whitespace, zero-width, diacritics, emoji, etc.)  
-- Per-site and per-character exceptions  
 - Export/import of sanitisation logs  
+- Categorized removal stats breakdown
 
 ---
 
 ### 🧩 Feedback & Contributions
 This is a small personal project made for fun and friends, but contributions, bug reports, or improvement ideas are welcome.
 If you discover characters that *shouldn’t* be removed (or ones that slip through), please open an issue or pull request on GitHub.
+rs that *shouldn’t* be removed (or ones that slip through), please open an issue or pull request on GitHub.
