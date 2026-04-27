@@ -11,16 +11,19 @@
 
   /**
    * Performs the sanitization on a string.
-   * Similar logic to content_script.js but adapted for the main world.
    * @param {string} text - The text to sanitize.
    * @returns {{cleaned: string, removals: Map}} The cleaned text and removal stats.
    */
   function sanitize(text) {
     if (!text || typeof text !== 'string') return { cleaned: text, removals: new Map() };
     
+    // Safely access utils from window
+    const utils = window.AI_TEXT_SANITISER_UTILS;
+    if (!utils) return { cleaned: text, removals: new Map() };
+
     let currentText = text;
-    if (settings.removeCitations) {
-      currentText = currentText.replace(citationRegex, '');
+    if (settings.removeCitations && utils.citationRegex) {
+      currentText = currentText.replace(utils.citationRegex, '');
     }
 
     const removals = new Map();
@@ -33,10 +36,9 @@
         continue;
       }
 
-      // shouldRemove logic
       let remove = false;
       if (cp > 0x7F) {
-        const isEmoji = isEmojiCodePoint(cp, char);
+        const isEmoji = utils.isEmojiCodePoint ? utils.isEmojiCodePoint(cp, char) : false;
         if (isEmoji) {
           if (settings.removeEmojis) remove = true;
         } else {
@@ -45,12 +47,17 @@
       }
 
       if (remove) {
-        const meta = getCodePointMeta(cp, char);
+        const meta = utils.getCodePointMeta ? utils.getCodePointMeta(cp, char) : { key: 'U+' + cp.toString(16) };
         const existing = removals.get(meta.key);
         if (existing) {
           existing.count++;
         } else {
-          removals.set(meta.key, { count: 1, name: meta.name, category: meta.category, emoji: meta.emoji });
+          removals.set(meta.key, { 
+            count: 1, 
+            name: meta.name || 'Unknown', 
+            category: meta.category || 'Unknown', 
+            emoji: !!meta.emoji 
+          });
         }
       } else {
         kept.push(char);
@@ -65,14 +72,10 @@
 
   /**
    * Reports removals back to the isolated world.
-   * @param {Map} removals - The map of removals.
-   * @param {string} originalText - The original text.
-   * @param {string} cleanedText - The cleaned text.
    */
   function reportRemovals(removals, originalText, cleanedText) {
     if (removals.size === 0 && originalText === cleanedText) return;
 
-    // Convert Map to Object for postMessage
     const removalsObj = {};
     for (const [key, value] of removals.entries()) {
       removalsObj[key] = value;
@@ -89,25 +92,37 @@
   if (navigator.clipboard && navigator.clipboard.writeText) {
     const originalWriteText = navigator.clipboard.writeText;
     navigator.clipboard.writeText = function (text) {
-      if (settings.activeForPage) {
-        const { cleaned, removals } = sanitize(text);
-        reportRemovals(removals, text, cleaned);
-        return originalWriteText.call(this, cleaned);
+      let targetText = text;
+      try {
+        if (settings.activeForPage) {
+          const { cleaned, removals } = sanitize(text);
+          reportRemovals(removals, text, cleaned);
+          targetText = cleaned;
+        }
+      } catch (err) {
+        console.error('AI Text Sanitiser: Error during writeText interception', err);
       }
-      return originalWriteText.call(this, text);
+      return originalWriteText.apply(navigator.clipboard, [targetText]);
     };
   }
 
   // Intercept DataTransfer.prototype.setData (used in 'copy' events)
-  const originalSetData = DataTransfer.prototype.setData;
-  DataTransfer.prototype.setData = function (type, value) {
-    if (settings.activeForPage && type === 'text/plain') {
-      const { cleaned, removals } = sanitize(value);
-      reportRemovals(removals, value, cleaned);
-      return originalSetData.call(this, type, cleaned);
-    }
-    return originalSetData.call(this, type, value);
-  };
+  if (typeof DataTransfer !== 'undefined' && DataTransfer.prototype.setData) {
+    const originalSetData = DataTransfer.prototype.setData;
+    DataTransfer.prototype.setData = function (type, value) {
+      let targetValue = value;
+      try {
+        if (settings.activeForPage && type === 'text/plain') {
+          const { cleaned, removals } = sanitize(value);
+          reportRemovals(removals, value, cleaned);
+          targetValue = cleaned;
+        }
+      } catch (err) {
+        console.error('AI Text Sanitiser: Error during setData interception', err);
+      }
+      return originalSetData.apply(this, [type, targetValue]);
+    };
+  }
 
   // Listen for settings from the isolated world
   window.addEventListener('message', (event) => {
@@ -117,7 +132,11 @@
     }
   });
 
-  // Request initial settings
-  window.postMessage({ type: 'AI_TEXT_SANITISER_PING' }, '*');
+  // Periodically request initial settings until received
+  let pingCount = 0;
+  const pingInterval = setInterval(() => {
+    window.postMessage({ type: 'AI_TEXT_SANITISER_PING' }, '*');
+    if (++pingCount > 10) clearInterval(pingInterval);
+  }, 500);
 
 })();

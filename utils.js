@@ -2,29 +2,12 @@
  * Shared utility functions and constants for AI Text Sanitiser extension.
  */
 
-/**
- * Default sites to monitor for sanitization.
- * @type {string[]}
- */
-const DEFAULT_SITES = ['*.chatgpt.com', '*.deepseek.com', '*.claude.ai'];
+// Use var to ensure variables are available globally in the script context
+var DEFAULT_SITES = ['*.chatgpt.com', '*.deepseek.com', '*.claude.ai', '*.gemini.google.com', 'gemini.google.com'];
+var emojiRegex = /\p{Extended_Pictographic}/u;
+var citationRegex = /\[cite_start\]|\[cite:\s*\d+\]|\[\d+\]|\^\[?\d+\]?/g;
 
-/**
- * Regex to match emoji characters using Unicode property escapes.
- * @type {RegExp}
- */
-const emojiRegex = /\p{Extended_Pictographic}/u;
-
-/**
- * Regex to match various citation formats from Gemini, ChatGPT, etc.
- * @type {RegExp}
- */
-const citationRegex = /\[cite_start\]|\[cite:\s*\d+\]|\[\d+\]|\^\[?\d+\]?/g;
-
-/**
- * Pre-defined metadata for specific Unicode characters.
- * @type {Object.<string, {name: string, category: string, isEmoji?: boolean}>}
- */
-const unicodeDatabase = {
+var unicodeDatabase = {
   'U+0020': { name: 'SPACE', category: 'Whitespace' },
   'U+00A0': { name: 'NO-BREAK SPACE', category: 'Whitespace' },
   'U+00B0': { name: 'DEGREE SIGN', category: 'Symbol' },
@@ -79,11 +62,6 @@ const unicodeDatabase = {
   'U+1F456': { name: 'JEANS', category: 'Emoji', isEmoji: true }
 };
 
-/**
- * Formats a code point number or string into a standard 'U+XXXX' format.
- * @param {number|string} value - The code point value.
- * @returns {string} The formatted string.
- */
 function formatCodePoint(value) {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return `U+${value.toString(16).toUpperCase().padStart(4, '0')}`;
@@ -95,11 +73,6 @@ function formatCodePoint(value) {
   return 'U+0000';
 }
 
-/**
- * Parses a 'U+XXXX' string into a numeric code point.
- * @param {string|number} codePoint - The code point representation.
- * @returns {number} The numeric value, or NaN if invalid.
- */
 function parseCodePoint(codePoint) {
   if (typeof codePoint === 'number') return codePoint;
   if (typeof codePoint !== 'string') return NaN;
@@ -108,12 +81,6 @@ function parseCodePoint(codePoint) {
   return parseInt(hex, 16);
 }
 
-/**
- * Determines if a code point is considered an emoji.
- * @param {number} cp - The numeric code point.
- * @param {string} [char=''] - The actual character string (for regex matching).
- * @returns {boolean} True if the code point is an emoji.
- */
 function isEmojiCodePoint(cp, char = '') {
   if (!Number.isFinite(cp)) return false;
   if (cp >= 0x1F000 && cp <= 0x1FAFF) return true;
@@ -125,11 +92,6 @@ function isEmojiCodePoint(cp, char = '') {
   return false;
 }
 
-/**
- * Classifies a code point into a human-readable category.
- * @param {number} cp - The numeric code point.
- * @returns {string} The category name.
- */
 function classifyCodePoint(cp) {
   if (!Number.isFinite(cp)) return 'Unknown';
   if (cp <= 0x1F) return 'Control';
@@ -157,12 +119,6 @@ function classifyCodePoint(cp) {
   return 'Non-ASCII';
 }
 
-/**
- * Retrieves metadata for a code point, merging with pre-defined database info.
- * @param {number|string} codePoint - The code point value.
- * @param {Object} [entry={}] - Existing entry data.
- * @returns {Object} The metadata object.
- */
 function getCodePointMeta(codePoint, entry = {}) {
   const key = typeof codePoint === 'string' ? formatCodePoint(codePoint) : formatCodePoint(codePoint);
   const cpNumber = parseCodePoint(key);
@@ -177,11 +133,6 @@ function getCodePointMeta(codePoint, entry = {}) {
   return { key, name, category, emoji };
 }
 
-/**
- * Normalizes a domain name for pattern matching and allowlisting.
- * @param {string} input - The raw domain input.
- * @returns {string} The normalized domain.
- */
 function normalizeDomain(input) {
   let value = String(input || '').trim().toLowerCase();
   if (!value) return '';
@@ -191,4 +142,20 @@ function normalizeDomain(input) {
   while (value.endsWith('.')) value = value.slice(0, -1);
   if (value.startsWith('www.')) value = value.slice(4);
   return value;
+}
+
+// Ensure functions are available on window for injector.js
+if (typeof window !== 'undefined') {
+  window.AI_TEXT_SANITISER_UTILS = {
+    DEFAULT_SITES,
+    emojiRegex,
+    citationRegex,
+    unicodeDatabase,
+    formatCodePoint,
+    parseCodePoint,
+    isEmojiCodePoint,
+    classifyCodePoint,
+    getCodePointMeta,
+    normalizeDomain
+  };
 }

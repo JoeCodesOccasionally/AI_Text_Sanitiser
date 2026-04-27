@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI_Text_Sanitiser",
-  "version": "1.7",
+  "version": "1.8",
   "description": "AI_Text_Sanitiser cleans copied text by stripping configurable non-ASCII and emoji artifacts, with per-site control and removal stats.",
   "permissions": [
     "clipboardWrite",
